@@ -28,6 +28,9 @@ char T0, T1, T2, T3;
 #define BTN_MODO (1 << PB3)
 #define BTN_DIMINUI (1 << PB4)
 
+#define MAX_SOVA_T (4 * 60 * 60000) // Tempo máximo de sova
+#define MAX_CRES_T (5 * 60 * 60000) // Tempo máximo de crescimento
+#define MAX_ASSA_T (4 * 60 * 60000) // Tempo máximo de assamento
 
 // Botoes
 #define DEBOUNCE_INTERVAL 1 // ms
@@ -45,6 +48,12 @@ int lastModo = BTN_DIMINUI;   // ultima leitura com ruido
 int botaoEnter = 1; // estado do botao
 
 int flagState = 0;    // fase da config
+int execState = 0;    // fase da execução
+unsigned int lastLCDRefresh = 0; // Última vez que o display foi atualizado durante a fase de execução
+bool startSova = false; // Indica que iniciou o processo de sova
+bool startCres = false; // Indica que iniciou o processo de crescimento
+bool startAssa = false; // Indica que iniciou o processo de assamento
+
 
 unsigned int adc_res; // temperatura
 
@@ -247,9 +256,9 @@ int main()
 
   BEEP();
 
-  volatile long tempoSovar = 1 * 60000;
-  volatile long tempoDescanso = 1 * 60000;
-  volatile long tempoAssar = 1 * 60000;
+  volatile long tempoSovar = 25 * 60000; // 25 min
+  volatile long tempoDescanso = 90 * 60000; // 1h30
+  volatile long tempoAssar = 40 * 60000; // 40 min
   volatile long tempoDisplay = 0;
   while (1)
   {
@@ -260,10 +269,10 @@ int main()
     // Exibe mensagem de sova
     if (flagState == 0)
     {
-      T3 = ((tempoSovar % 60000) / 1000) % 10; // Tempo em unidade de segundo;
-      T2 = ((tempoSovar % 60000) / 1000) / 10; // Tempo em dezena de segundo;
-      T1 = (tempoSovar / 60000) % 10;          // Tempo em unidade de minuto;
-      T0 = (tempoSovar / 60000) / 10;          // Tempo em dezena de minuto;
+      T3 = (tempoSovar / 60000) % 10;          // Tempo em unidade de minuto;
+      T2 = ((tempoSovar / 60000) / 10) % 6;    // Tempo em dezena de minuto;
+      T1 = ((tempoSovar / 60000) / 60) % 10;   // Tempo em unidade de hora;
+      T0 = ((tempoSovar / 60000) / 60) / 10;   // Tempo em dezena de hora;
 
       cmd_LCD('S', 1);
       cmd_LCD('O', 1);
@@ -274,19 +283,20 @@ int main()
 
       cmd_LCD(T0 + '0', 1);
       cmd_LCD(T1 + '0', 1);
-      cmd_LCD(':', 1);
+      cmd_LCD('h', 1);
       cmd_LCD(T2 + '0', 1);
       cmd_LCD(T3 + '0', 1);
+      cmd_LCD('m', 1);
     }
 
     // Exibe mensagem de crescimento
     if (flagState == 1)
     {
-      T3 = ((tempoDescanso % 60000) / 1000) % 10; // Tempo em unidade de segundo;
-      T2 = ((tempoDescanso % 60000) / 1000) / 10; // Tempo em dezena de segundo;
-      T1 = (tempoDescanso / 60000) % 10;          // Tempo em unidade de minuto;
-      T0 = (tempoDescanso / 60000) / 10;          // Tempo em dezena de minuto;
-
+      T3 = (tempoDescanso / 60000) % 10;          // Tempo em unidade de minuto;
+      T2 = ((tempoDescanso / 60000) / 10) % 6;    // Tempo em dezena de minuto;
+      T1 = ((tempoDescanso / 60000) / 60) % 10;   // Tempo em unidade de hora;
+      T0 = ((tempoDescanso / 60000) / 60) / 10;   // Tempo em dezena de hora;
+      
       cmd_LCD('D', 1);
       cmd_LCD('E', 1);
       cmd_LCD('S', 1);
@@ -299,19 +309,20 @@ int main()
 
       cmd_LCD(T0 + '0', 1);
       cmd_LCD(T1 + '0', 1);
-      cmd_LCD(':', 1);
+      cmd_LCD('h', 1);
       cmd_LCD(T2 + '0', 1);
       cmd_LCD(T3 + '0', 1);
+      cmd_LCD('m', 1);
     }
 
     // Exibe mensagem de assamento
     if (flagState == 2)
     {
-      T3 = ((tempoAssar % 60000) / 1000) % 10; // Tempo em unidade de segundo;
-      T2 = ((tempoAssar % 60000) / 1000) / 10; // Tempo em dezena de segundo;
-      T1 = (tempoAssar / 60000) % 10;          // Tempo em unidade de minuto;
-      T0 = (tempoAssar / 60000) / 10;          // Tempo em dezena de minuto;
-
+      T3 = (tempoAssar / 60000) % 10;          // Tempo em unidade de minuto;
+      T2 = ((tempoAssar / 60000) / 10) % 6;    // Tempo em dezena de minuto;
+      T1 = ((tempoAssar / 60000) / 60) % 10;   // Tempo em unidade de hora;
+      T0 = ((tempoAssar / 60000) / 60) / 10;   // Tempo em dezena de hora;
+      
       cmd_LCD('A', 1);
       cmd_LCD('S', 1);
       cmd_LCD('S', 1);
@@ -321,9 +332,10 @@ int main()
 
       cmd_LCD(T0 + '0', 1);
       cmd_LCD(T1 + '0', 1);
-      cmd_LCD(':', 1);
+      cmd_LCD('h', 1);
       cmd_LCD(T2 + '0', 1);
       cmd_LCD(T3 + '0', 1);
+      cmd_LCD('m', 1);
     }
 
     int readAumenta;
@@ -338,17 +350,17 @@ int main()
       aumentaAt = my_millis;
       if (readAumenta == 0)
       {
-        if ((flagState == 0) && (tempoSovar < (60 * 60000)))
+        if ((flagState == 0) && (tempoSovar < MAX_SOVA_T))
         {
-          tempoSovar = tempoSovar + 1 * 60000;
+          tempoSovar += 60000; // += 1 min
         }
-        if ((flagState == 1) && (tempoDescanso < (100 * 60000)))
+        if ((flagState == 1) && (tempoDescanso < MAX_CRES_T))
         {
-          tempoDescanso = tempoDescanso + 1 * 60000;
+          tempoDescanso += 60000;  // += 1 min
         }
-        if ((flagState == 2) && (tempoAssar < (120 * 60000)))
+        if ((flagState == 2) && (tempoAssar < MAX_ASSA_T))
         {
-          tempoAssar = tempoAssar + 1 * 60000;
+          tempoAssar += 60000;  // += 1 min
         }
       }
       lastAumenta = readAumenta;
@@ -368,15 +380,15 @@ int main()
       {
         if ((flagState == 0) && (tempoSovar > 0))
         {
-          tempoSovar = tempoSovar - 1 * 60000;
+          tempoSovar -= 60000; // -= 1min
         }
         if ((flagState == 1) && (tempoDescanso > 0))
         {
-          tempoDescanso = tempoDescanso - 1 * 60000;
+          tempoDescanso -= 60000; // -= 1min;
         }
         if ((flagState == 2) && (tempoAssar > 0))
         {
-          tempoAssar = tempoAssar - 1 * 60000;
+          tempoAssar -= 60000; // -= 1min;
         }
       }
       lastDiminui = readDiminui;
@@ -394,19 +406,22 @@ int main()
       modoAt = my_millis;
       if (readModo == 0)
       {
+        // Modo de sova
         if (flagState == 0)
         {
-          flagState = 1;
+          flagState = 1; // Passa para modo de crescimento
           cmd_LCD(0x01, 0);
         }
+        // Modo de crescimento
         else if (flagState == 1)
         {
-          flagState = 2;
+          flagState = 2; // Passa para modo de assar
           cmd_LCD(0x01, 0);
         }
+        // Modo de assar
         else if (flagState == 2)
         {
-          flagState = 3;
+          flagState = 3; // Passa para modo de execução
           cmd_LCD(0x01, 0);
         }
       }
@@ -415,118 +430,144 @@ int main()
 
     // Executa
     if (flagState == 3)
-    {      
-      tempoDisplay = tempoSovar;
-      tempoSovar += my_millis;
+    {
+      if (execState == 0) {
 		
-      unsigned int lastLCDRefresh = 0;
-     
-  	  cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
-      cmd_LCD('S',1);
-      cmd_LCD('O',1);
-      cmd_LCD('V',1);
-      cmd_LCD('A',1);
-      cmd_LCD('N',1);
-      cmd_LCD('D',1);
-      cmd_LCD('O',1);
-      cmd_LCD('.',1);
-      cmd_LCD('.',1);
-      cmd_LCD('.',1);
-      
-      while (my_millis <= tempoSovar)
-      {            
-        MOTORON;
-        if (my_millis - lastLCDRefresh > 1) {
-            cmd_LCD(0xC0,0); // Posiciona o cursor na segunda linha
-            lastLCDRefresh = my_millis;
-            char t3 = (((tempoSovar - lastLCDRefresh)  % 60000) / 1000) % 10; // Tempo em unidade de segundo;
-            char t2 = (((tempoSovar - lastLCDRefresh) % 60000) / 1000) / 10; // Tempo em dezena de segundo;
-            char t1 = ((tempoSovar - lastLCDRefresh) / 60000) % 10;          // Tempo em unidade de minuto;
-            char t0 = ((tempoSovar - lastLCDRefresh) / 60000) / 10;          // Tempo em dezena de minuto;
-            cmd_LCD(t0 + '0', 1);
-            cmd_LCD(t1 + '0', 1);
-            cmd_LCD(':', 1);
-            cmd_LCD(t2 + '0', 1);
-            cmd_LCD(t3 + '0', 1);
-        }
-      }
-      cmd_LCD(0x01, 0);
-      MOTOROFF;
-      BEEP();
+        if (!startSova) {
+         startSova = true;
+         tempoDisplay = tempoSovar;
+         cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
+         cmd_LCD('S',1);
+         cmd_LCD('O',1);
+         cmd_LCD('V',1);
+         cmd_LCD('A',1);
+         cmd_LCD('N',1);
+         cmd_LCD('D',1);
+         cmd_LCD('O',1);
+         cmd_LCD('.',1);
+         cmd_LCD('.',1);
+         cmd_LCD('.',1);
+        }        
 
-      tempoDisplay = tempoDescanso;
-      tempoDescanso += my_millis;
-      
-  	  cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
-      cmd_LCD('C',1);
-      cmd_LCD('R',1);
-      cmd_LCD('E',1);
-      cmd_LCD('S',1);
-      cmd_LCD('C',1);
-      cmd_LCD('E',1);
-      cmd_LCD('N',1);
-      cmd_LCD('D',1);
-      cmd_LCD('O',1);
-      cmd_LCD('.',1);
-      cmd_LCD('.',1);
-      cmd_LCD('.',1);
-      while (my_millis <= tempoDescanso)
-      {
-        MOTOROFF;
-        HEATOFF;
-        if (my_millis - lastLCDRefresh > 1) {
-            cmd_LCD(0xC0,0); // Posiciona o cursor na segunda linha
+        if ((my_millis - lastLCDRefresh) >= 1) {          
             lastLCDRefresh = my_millis;
-            char t3 = (((tempoDescanso - lastLCDRefresh)  % 60000) / 1000) % 10; // Tempo em unidade de segundo;
-            char t2 = (((tempoDescanso - lastLCDRefresh) % 60000) / 1000) / 10; // Tempo em dezena de segundo;
-            char t1 = ((tempoDescanso - lastLCDRefresh) / 60000) % 10;          // Tempo em unidade de minuto;
-            char t0 = ((tempoDescanso - lastLCDRefresh) / 60000) / 10;          // Tempo em dezena de minuto;
-            cmd_LCD(t0 + '0', 1);
-            cmd_LCD(t1 + '0', 1);
-            cmd_LCD(':', 1);
-            cmd_LCD(t2 + '0', 1);
-            cmd_LCD(t3 + '0', 1);
-        }
-      }
-      cmd_LCD(0x01, 0);
-      BEEP();
+        	MOTORON;
+            cmd_LCD(0xC0,0); // Posiciona o cursor na segunda linha
+            T3 = (tempoDisplay / 60000) % 10;          // Tempo em unidade de minuto;
+            T2 = ((tempoDisplay / 60000) / 10) % 6;    // Tempo em dezena de minuto;
+            T1 = ((tempoDisplay / 60000) / 60) % 10;   // Tempo em unidade de hora;
+            T0 = ((tempoDisplay / 60000) / 60) / 10;   // Tempo em dezena de hora;
 
-      tempoDisplay = tempoAssar;
-      tempoAssar += my_millis;
-      cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
-      cmd_LCD('A',1);
-      cmd_LCD('S',1);
-      cmd_LCD('A',1);
-      cmd_LCD('A',1);
-      cmd_LCD('A',1);
-      cmd_LCD('N',1);
-      cmd_LCD('D',1);
-      cmd_LCD('O',1);
-      cmd_LCD('.',1);
-      cmd_LCD('.',1);
-      cmd_LCD('.',1);
-      while (my_millis <= tempoAssar)
-      {
-        HEATON;
-        if (my_millis - lastLCDRefresh > 1) {
+            cmd_LCD(T0 + '0', 1);
+            cmd_LCD(T1 + '0', 1);
+            cmd_LCD('h', 1);
+            cmd_LCD(T2 + '0', 1);
+            cmd_LCD(T3 + '0', 1);
+            cmd_LCD('m', 1);
+          
+          if ((tempoDisplay - 1000) > 0){ 
+            tempoDisplay -= 1000; // -= 1s
+          }	else {
+            execState = 1; // Executa fase de crescimento
+            startSova = false;
+            cmd_LCD(0x01, 0);
+            MOTOROFF;
+            BEEP();
+          }
+        }
+      } else if (execState == 1) {
+        if (!startCres) {
+         	startCres = true;
+         	tempoDisplay = tempoDescanso;
+      
+            cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
+            cmd_LCD('C',1);
+            cmd_LCD('R',1);
+            cmd_LCD('E',1);
+            cmd_LCD('S',1);
+            cmd_LCD('C',1);
+            cmd_LCD('E',1);
+            cmd_LCD('N',1);
+            cmd_LCD('D',1);
+            cmd_LCD('O',1);
+            cmd_LCD('.',1);
+            cmd_LCD('.',1);
+            cmd_LCD('.',1);
+        }
+        if (my_millis - lastLCDRefresh >= 1) {
+          MOTOROFF;
+          HEATOFF;
+          cmd_LCD(0xC0,0); // Posiciona o cursor na segunda linha
+          lastLCDRefresh = my_millis;
+          char t3 = (tempoDisplay / 60000) % 10;          // Tempo em unidade de minuto;
+          char t2 = ((tempoDisplay / 60000) / 10) % 6;    // Tempo em dezena de minuto;
+          char t1 = ((tempoDisplay / 60000) / 60) % 10;   // Tempo em unidade de hora;
+          char t0 = ((tempoDisplay / 60000) / 60) / 10;   // Tempo em dezena de hora;
+
+          cmd_LCD(t0 + '0', 1);
+          cmd_LCD(t1 + '0', 1);
+          cmd_LCD('h', 1);
+          cmd_LCD(t2 + '0', 1);
+          cmd_LCD(t3 + '0', 1);
+          cmd_LCD('m', 1);
+          
+          if ((tempoDisplay - 1000) > 0){ 
+            tempoDisplay -= 1000; // -= 1s
+          }	else {
+            execState = 2; // Executa fase de assamento
+            startCres = false;            
+            cmd_LCD(0x01, 0);
+            BEEP();
+          }
+        }
+      } else if (execState == 2) {
+        if (!startAssa) {
+          tempoDisplay = tempoAssar;
+          startAssa = true;
+          
+          cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
+          cmd_LCD('A',1);
+          cmd_LCD('S',1);
+          cmd_LCD('S',1);
+          cmd_LCD('A',1);
+          cmd_LCD('N',1);
+          cmd_LCD('D',1);
+          cmd_LCD('O',1);
+          cmd_LCD('.',1);
+          cmd_LCD('.',1);
+          cmd_LCD('.',1);
+        }
+       
+        if (my_millis - lastLCDRefresh >= 1) {
+        	HEATON;
             cmd_LCD(0xC0,0); // Posiciona o cursor na segunda linha
             lastLCDRefresh = my_millis;
-            char t3 = (((tempoAssar - lastLCDRefresh)  % 60000) / 1000) % 10; // Tempo em unidade de segundo;
-            char t2 = (((tempoAssar - lastLCDRefresh) % 60000) / 1000) / 10; // Tempo em dezena de segundo;
-            char t1 = ((tempoAssar - lastLCDRefresh) / 60000) % 10;          // Tempo em unidade de minuto;
-            char t0 = ((tempoAssar - lastLCDRefresh) / 60000) / 10;          // Tempo em dezena de minuto;
+            char t3 = (tempoDisplay / 60000) % 10;          // Tempo em unidade de minuto;
+            char t2 = ((tempoDisplay / 60000) / 10) % 6;    // Tempo em dezena de minuto;
+            char t1 = ((tempoDisplay / 60000) / 60) % 10;   // Tempo em unidade de hora;
+            char t0 = ((tempoDisplay / 60000) / 60) / 10;   // Tempo em dezena de hora;
+
             cmd_LCD(t0 + '0', 1);
             cmd_LCD(t1 + '0', 1);
-            cmd_LCD(':', 1);
+            cmd_LCD('h', 1);
             cmd_LCD(t2 + '0', 1);
             cmd_LCD(t3 + '0', 1);
+            cmd_LCD('m', 1);
+          
+            if ((tempoDisplay - 1000) > 0){ 
+              tempoDisplay -= 1000; // -= 1s
+            } else {
+              flagState = 4; // Finaliza o processo;
+              startAssa = false;            
+              
+              cmd_LCD(0x01, 0);
+              cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
+              HEATOFF;
+              BEEP();   
+            }
         }
-      }
-      cmd_LCD(0x01, 0);
-      cmd_LCD(0x80,0); // Posiciona o cursor na primeira linha
-      HEATOFF;
-      BEEP();
-      flagState = 4;
+             
+      }      
     }
 
     // Exibe mensagem de fim
