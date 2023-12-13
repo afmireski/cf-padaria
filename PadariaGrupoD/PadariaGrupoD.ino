@@ -1,5 +1,3 @@
-// #include "LCD.h" // LCD
-
 int flagDecrease = 0; // fase da config
 
 #define TOP PC5
@@ -7,7 +5,7 @@ int flagDecrease = 0; // fase da config
 #define RIGHT PC4
 #define LEFT PC2
 
-#define REAL false
+#define REAL false // Define se o código está rodando no tinkercad ou no hardware real
 
 char T0, T1, T2, T3, TEMP0, TEMP1, TEMP2;
 
@@ -28,9 +26,9 @@ char T0, T1, T2, T3, TEMP0, TEMP1, TEMP2;
 #define BTN_MODO (1 << PB3)
 #define BTN_DIMINUI (1 << PB4)
 
-#define MAX_SOVA_T (4 * 60 * 60000) // Tempo máximo de sova
-#define MAX_CRES_T (5 * 60 * 60000) // Tempo máximo de crescimento
-#define MAX_ASSA_T (4 * 60 * 60000) // Tempo máximo de assamento
+#define MAX_SOVA_T (240 * 60000) // Tempo máximo de sova  4h
+#define MAX_CRES_T (300 * 60000) // Tempo máximo de crescimento 5h
+#define MAX_ASSA_T (240 * 60000) // Tempo máximo de assamento
 
 #define MIN_SOVA_TEMP 16  // Temperatura mínimo de sova
 #define MIN_CRES_TEMP 27  // Temperatura mínimo de crescimento
@@ -223,6 +221,17 @@ void ident_num(unsigned int valor, unsigned char *disp)
 }
 //---------------------------------------------------------------------------------------------
 
+volatile long tempoSovar = 25 * 60000;     // 25 min
+volatile long tempoCrescer = 90 * 60000;   // 1h30
+volatile long tempoAssar = 40 * 60000;     // 40 min
+volatile long tempSovar = MIN_SOVA_TEMP;              // 25 min
+volatile long tempCrescer = MIN_CRES_TEMP; // 1h30
+volatile long tempAssar = MIN_ASSA_TEMP;   // 40 min
+volatile long tempoDisplay = 60;
+volatile long tempDisplay = 0;
+
+#define MILLIS_INTERVAL 1
+
 int main()
 {
   // void setup() {
@@ -268,14 +277,7 @@ int main()
 
   BEEP();
 
-  volatile long tempoSovar = 25 * 60000;     // 25 min
-  volatile long tempoCrescer = 90 * 60000;   // 1h30
-  volatile long tempoAssar = 40 * 60000;     // 40 min
-  volatile long tempSovar = 16;              // 25 min
-  volatile long tempCrescer = MIN_CRES_TEMP; // 1h30
-  volatile long tempAssar = MIN_ASSA_TEMP;   // 40 min
-  volatile long tempoDisplay = 60;
-  volatile long tempDisplay = 0;
+  
   while (1)
   {
 
@@ -563,7 +565,7 @@ int main()
           cmd_LCD('.', 1);
         }
 
-        if ((my_millis - lastLCDRefresh) >= 1)
+        if ((my_millis - lastLCDRefresh) >= MILLIS_INTERVAL)
         {
           lastLCDRefresh = my_millis;
           MOTORON;
@@ -592,7 +594,7 @@ int main()
           cmd_LCD('°', 1);
           cmd_LCD('C', 1);
 
-          if ((tempoDisplay - 1000) > 0)
+          if (tempoDisplay >= 1000)
           {
             tempoDisplay -= 1000; // -= 1s
           }
@@ -628,7 +630,7 @@ int main()
           cmd_LCD('.', 1);
           cmd_LCD('.', 1);
         }
-        if (my_millis - lastLCDRefresh >= 1)
+        if (my_millis - lastLCDRefresh >= MILLIS_INTERVAL)
         {
           MOTOROFF;
           HEATOFF;
@@ -658,12 +660,14 @@ int main()
           cmd_LCD('°', 1);
           cmd_LCD('C', 1);
 
-          if ((tempoDisplay - 1000) > 0)
+          if (tempoDisplay >= 1000)
           {
             tempoDisplay -= 1000; // -= 1s
           }
           else
           {
+            tempoDisplay = 0;
+            tempoDisplay = 0;
             execState = 2; // Executa fase de assamento
             startCres = false;
             cmd_LCD(0x01, 0);
@@ -692,7 +696,7 @@ int main()
           cmd_LCD('.', 1);
         }
 
-        if (my_millis - lastLCDRefresh >= 1)
+        if (my_millis - lastLCDRefresh >= MILLIS_INTERVAL)
         {
           HEATON;
           cmd_LCD(0xC0, 0); // Posiciona o cursor na segunda linha
@@ -721,12 +725,13 @@ int main()
           cmd_LCD('°', 1);
           cmd_LCD('C', 1);
 
-          if ((tempoDisplay - 1000) > 0)
+          if (tempoDisplay >= 1000)
           {
             tempoDisplay -= 1000; // -= 1s
           }
           else
           {
+            tempoDisplay = 0;
             flagState = 4; // Finaliza o processo;
             startAssa = false;
 
@@ -757,24 +762,14 @@ int main()
 
     if (my_millis % 1000 == 0)
     {
-      Serial.print(flagState);
-      Serial.print(", ADC0: ");
       adc_res = 0;
       for (int i = 0; i < num_ADC_average; i++)
         adc_res += adc_result0[i];
       adc_res /= num_ADC_average;
-      Serial.print(adc_res);
-      Serial.print(", ");
 
       temperature_read = COUNT2TEMP(adc_res);
       unsigned char digitos[tam_vetor];
       ident_num(temperature_read, digitos);
-      Serial.print(temperature_read);
-      Serial.println();
-      cmd_LCD(0x8D, 0); // desloca o cursor para que os 3 digitos fiquem a direita do LCD
-      cmd_LCD(digitos[2], 1);
-      cmd_LCD(digitos[1], 1);
-      cmd_LCD(digitos[0], 1);
     }
 
   } // while 1
